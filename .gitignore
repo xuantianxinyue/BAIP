@@ -1,0 +1,12 @@
+.DS_Store
+build/
+DerivedData/
+*.xcodeproj/
+xcuserdata/
+.swiftpm/
+Packages/RawAICore/.build/
+Packages/RawAICore/Binaries/
+Vendor/src/
+Vendor/build/
+Fixtures/
+dist/
