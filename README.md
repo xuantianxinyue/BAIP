@@ -1,6 +1,6 @@
-# RawAIBatch
+# BAIP — RawAIBatch
 
-macOS 原生本地 RAW AI 批处理修图工具（MVP）。纯离线，Apple Silicon（arm64），macOS 14.0+。
+Batch AI Image Processing Tool：macOS 原生本地 RAW AI 批处理修图工具（MVP）。纯离线，Apple Silicon（arm64），macOS 14.0+。
 
 ## 架构
 
