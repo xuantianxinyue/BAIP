@@ -5,7 +5,7 @@
 ## 第一阶段：环境搭建
 | # | 模块 | 自检标准 |
 |---|---|---|
-| 1.1 | 工程初始化：React 18 + Vite + TS + Tailwind，分层目录 | `tsc` 无错误，`vite build` 成功 |
+| 1.1 | 工程初始化：Next.js（App Router）+ React 19 + TS + Tailwind 4，分层目录（初版为 Vite，已迁移） | `tsc` 无错误，`next build` 成功 |
 | 1.2 | LibRaw WASM 集成：读取 EXIF、内嵌预览、完整解码 16bit RGB | 主流 RAW 样张（CR2/NEF/ARW/RAF/DNG）全部读出 EXIF 和像素 |
 | 1.3 | ONNX Runtime Web 集成：本地 WASM、多线程、示例推理 + 4bit 量化算子 | 自检全部 PASS，跨源隔离生效 |
 | 1.4 | 基础窗口：导入 → 列表 → 预览 → EXIF → 自检 | Playwright e2e 通过，0 个外部网络请求 |

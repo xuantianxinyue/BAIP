@@ -1,3 +1,5 @@
+'use client';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { classifyFile, type PhotoAsset } from '../core';
 import { DecoderRouter } from '../decoding';
@@ -15,7 +17,7 @@ export function useLibrary(router = new DecoderRouter()) {
   const [assets, setAssets] = useState<PhotoAsset[]>([]);
   const queue = useRef<PhotoAsset[]>([]);
   const running = useRef(false);
-  const lastImported = useRef<File>();
+  const lastImported = useRef<File | undefined>(undefined);
 
   useEffect(() => {
     if (new URLSearchParams(location.search).has('e2e')) installDevHooks(routerRef.current, () => lastImported.current);

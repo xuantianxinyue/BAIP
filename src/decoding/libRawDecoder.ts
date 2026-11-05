@@ -1,14 +1,24 @@
-import LibRaw, { type LibRawSettings, type Metadata } from 'libraw-wasm';
-import { DecodeError, type DecodeOptions, type DecodedImage, type ExifInfo, type ImageDecoder, type ImageKind } from '../core';
+import type LibRaw from 'libraw-wasm';
+import type { LibRawSettings, Metadata } from 'libraw-wasm';
+import { importPublicModule, DecodeError, type DecodeOptions, type DecodedImage, type ExifInfo, type ImageDecoder, type ImageKind } from '../core';
 
 /**
  * Decodes camera RAW files with LibRaw compiled to WASM (libraw-wasm).
  *
+ * libraw-wasm is loaded at runtime from public/vendor/libraw (see scripts/copy-vendor.mjs) so its
+ * worker and wasm resolve via `import.meta.url` without going through the bundler.
  * Each call uses its own LibRaw instance (= its own Web Worker) and disposes it afterwards,
  * so the WASM heap of one file is released before the next one is opened.
  * Performance: `decode` runs full demosaicing on the CPU; for a 24 MP file this is the
  * dominant cost of the pipeline, so previews should use `embeddedPreview` instead.
  */
+let libRawClass: Promise<typeof LibRaw> | undefined;
+
+function loadLibRaw(): Promise<typeof LibRaw> {
+  libRawClass ??= importPublicModule<{ default: typeof LibRaw }>('vendor/libraw/index.js').then((m) => m.default);
+  return libRawClass;
+}
+
 export class LibRawDecoder implements ImageDecoder {
   readonly id = 'libraw-wasm';
 
@@ -70,7 +80,8 @@ export class LibRawDecoder implements ImageDecoder {
   }
 
   private async withLibRaw<T>(file: File, settings: LibRawSettings, body: (raw: LibRaw) => Promise<T>): Promise<T> {
-    const raw = new LibRaw();
+    const LibRawClass = await loadLibRaw();
+    const raw = new LibRawClass();
     try {
       await raw.open(new Uint8Array(await file.arrayBuffer()), settings);
       return await body(raw);

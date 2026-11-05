@@ -5,3 +5,6 @@ test-results/
 playwright-report/
 .DS_Store
 *.tsbuildinfo
+.next/
+next-env.d.ts
+public/vendor/
