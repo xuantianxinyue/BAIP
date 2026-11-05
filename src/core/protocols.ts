@@ -16,7 +16,8 @@ export interface ImageDecoder {
   readMetadata(file: File): Promise<ExifInfo>;
   /** Embedded/fast preview no larger than `maxPixelSize` on the long edge, or null if unavailable. */
   embeddedPreview(file: File, maxPixelSize: number): Promise<ImageBitmap | null>;
-  decode(file: File, options?: DecodeOptions): Promise<DecodedImage>;
+  /** Full decode. Aborting `signal` stops the work and rejects with a DecodeError of code 'aborted'. */
+  decode(file: File, options?: DecodeOptions, signal?: AbortSignal): Promise<DecodedImage>;
 }
 
 /** One step of the processing chain (denoise, portrait retouch, ...). Stages must not mutate their input. */
@@ -26,7 +27,7 @@ export interface ProcessingStage {
   process(image: DecodedImage, signal?: AbortSignal): Promise<DecodedImage>;
 }
 
-export type DecodeErrorCode = 'unsupported' | 'corrupt' | 'failed';
+export type DecodeErrorCode = 'unsupported' | 'corrupt' | 'failed' | 'aborted';
 
 export class DecodeError extends Error {
   constructor(

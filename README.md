@@ -1,6 +1,7 @@
 # BAIP — Batch AI Image Processing（Web MVP 分支）
 
 纯前端、离线运行的 RAW AI 批处理修图工具（浏览器版）。Mac 原生版在分支 `devin/1793846216-phase1-env-setup`。
+当前功能：导入文件 / 文件夹、底部缩略图条浏览、多选 / 排序 / 按格式分组 / 移除、缩放平移与按需加载原图、EXIF 展示、AI 环境自检。
 功能需求与验收标准见 `docs/`（以两份基准文件为准），Web 版细化计划见 `docs/web-plan.md`。
 
 ## 技术栈

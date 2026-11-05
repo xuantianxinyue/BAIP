@@ -21,7 +21,7 @@ export class DecoderRouter {
     return this.decoderFor(file).embeddedPreview(file, maxPixelSize);
   }
 
-  decode(file: File, options?: DecodeOptions): Promise<DecodedImage> {
-    return this.decoderFor(file).decode(file, options);
+  decode(file: File, options?: DecodeOptions, signal?: AbortSignal): Promise<DecodedImage> {
+    return this.decoderFor(file).decode(file, options, signal);
   }
 }

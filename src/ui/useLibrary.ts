@@ -1,20 +1,46 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { classifyFile, type PhotoAsset } from '../core';
+import { importSummary, planImport, type PhotoAsset } from '../core';
 import { DecoderRouter } from '../decoding';
 import { bitmapToObjectUrl } from '../pipeline';
 import { installDevHooks } from './devHooks';
 
 const PREVIEW_MAX_PIXELS = 1600;
+const THUMB_MAX_PIXELS = 240;
+
+export interface ImportResult {
+  imported: number;
+  unsupported: number;
+  duplicates: number;
+  summary: string;
+}
 
 /**
- * UI state for the imported photo list. Metadata + previews are loaded one file at a time
- * so only a single RAW buffer is held in memory.
+ * Library-local ids. Not `crypto.randomUUID()`: that only exists in secure contexts, and the app
+ * must also work when opened over plain http on a LAN/public IP (it then just runs single-threaded).
+ */
+let nextAssetId = 0;
+const newAssetId = () => `asset-${++nextAssetId}`;
+
+function revokeUrls(asset: Pick<PhotoAsset, 'previewUrl' | 'thumbUrl'>) {
+  if (asset.previewUrl) URL.revokeObjectURL(asset.previewUrl);
+  if (asset.thumbUrl) URL.revokeObjectURL(asset.thumbUrl);
+}
+
+/**
+ * The imported photo list. Unsupported files are dropped and duplicates skipped at import;
+ * metadata, preview and thumbnail are then loaded one file at a time so only a single RAW
+ * buffer is held in memory. Removing a photo only drops it from the list (never touches disk)
+ * and releases its object URLs.
  */
 export function useLibrary(router = new DecoderRouter()) {
   const routerRef = useRef(router);
   const [assets, setAssets] = useState<PhotoAsset[]>([]);
+  const assetsRef = useRef<PhotoAsset[]>([]);
+  assetsRef.current = assets;
+  /** Ids currently in the library; a load that finishes after its asset was removed is discarded. */
+  const liveIds = useRef(new Set<string>());
   const queue = useRef<PhotoAsset[]>([]);
   const running = useRef(false);
   const lastImported = useRef<File | undefined>(undefined);
@@ -32,38 +58,70 @@ export function useLibrary(router = new DecoderRouter()) {
     running.current = true;
     while (queue.current.length > 0) {
       const asset = queue.current.shift()!;
+      if (!liveIds.current.has(asset.id)) continue;
       update(asset.id, { status: 'loading' });
       const t0 = performance.now();
+      let patch: Partial<PhotoAsset>;
       try {
         const exif = await routerRef.current.readMetadata(asset.file);
         const bitmap = await routerRef.current.embeddedPreview(asset.file, PREVIEW_MAX_PIXELS);
-        const previewUrl = bitmap ? await bitmapToObjectUrl(bitmap) : undefined;
-        bitmap?.close();
-        update(asset.id, { status: 'ready', exif, previewUrl, loadMs: performance.now() - t0 });
+        let previewUrl: string | undefined;
+        let thumbUrl: string | undefined;
+        if (bitmap) {
+          try {
+            previewUrl = await bitmapToObjectUrl(bitmap);
+            thumbUrl = await bitmapToObjectUrl(bitmap, { maxPixelSize: THUMB_MAX_PIXELS, quality: 0.8 });
+          } finally {
+            bitmap.close();
+          }
+        }
+        patch = { status: 'ready', exif, previewUrl, thumbUrl, loadMs: performance.now() - t0 };
       } catch (e) {
-        update(asset.id, { status: 'error', error: e instanceof Error ? e.message : String(e), loadMs: performance.now() - t0 });
+        patch = { status: 'error', error: e instanceof Error ? e.message : String(e), loadMs: performance.now() - t0 };
       }
+      if (liveIds.current.has(asset.id)) update(asset.id, patch);
+      else revokeUrls(patch);
     }
     running.current = false;
   }, [update]);
 
   const importFiles = useCallback(
-    (files: Iterable<File>) => {
-      const added: PhotoAsset[] = [];
-      for (const file of files) {
-        const kind = classifyFile(file.name);
-        const base = { id: crypto.randomUUID(), file, name: file.name };
-        added.push(kind ? { ...base, kind, status: 'pending' } : { ...base, kind: 'bitmap', status: 'error', error: '不支持的格式' });
+    (files: Iterable<File>): ImportResult => {
+      const plan = planImport(files, new Set(assetsRef.current.map((a) => a.key)));
+      const added: PhotoAsset[] = plan.accepted.map(({ file, kind, key }) => ({
+        id: newAssetId(),
+        file,
+        name: file.name,
+        path: file.webkitRelativePath || undefined,
+        key,
+        kind,
+        status: 'pending',
+      }));
+      if (added.length > 0) {
+        lastImported.current = added.at(-1)!.file;
+        for (const a of added) liveIds.current.add(a.id);
+        assetsRef.current = [...assetsRef.current, ...added];
+        setAssets((list) => [...list, ...added]);
+        queue.current.push(...added);
+        void pump();
       }
-      lastImported.current = added.at(-1)?.file;
-      setAssets((list) => [...list, ...added]);
-      queue.current.push(...added.filter((a) => a.status === 'pending'));
-      void pump();
+      return { imported: added.length, unsupported: plan.unsupported, duplicates: plan.duplicates, summary: importSummary(plan) };
     },
     [pump],
   );
 
-  useEffect(() => () => assets.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl)), []); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Removes photos from the list (not from disk) and frees their previews. */
+  const removeAssets = useCallback((ids: Iterable<string>) => {
+    const removed = new Set(ids);
+    if (removed.size === 0) return;
+    for (const id of removed) liveIds.current.delete(id);
+    queue.current = queue.current.filter((a) => !removed.has(a.id));
+    for (const a of assetsRef.current) if (removed.has(a.id)) revokeUrls(a);
+    assetsRef.current = assetsRef.current.filter((a) => !removed.has(a.id));
+    setAssets((list) => list.filter((a) => !removed.has(a.id)));
+  }, []);
 
-  return { assets, importFiles };
+  useEffect(() => () => assetsRef.current.forEach(revokeUrls), []);
+
+  return { assets, importFiles, removeAssets };
 }

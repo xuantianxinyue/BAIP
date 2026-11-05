@@ -14,12 +14,17 @@ export function toImageData(image: DecodedImage): ImageData {
   return new ImageData(rgba, width, height);
 }
 
-/** Encodes a bitmap to a JPEG object URL for <img> previews. The caller must revoke it. */
-export async function bitmapToObjectUrl(bitmap: ImageBitmap, quality = 0.85): Promise<string> {
-  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+/**
+ * Encodes a bitmap to a JPEG object URL for <img> elements, optionally downscaled so the long
+ * edge is at most `maxPixelSize`. The bitmap is left open; the caller must revoke the URL.
+ */
+export async function bitmapToObjectUrl(bitmap: ImageBitmap, { quality = 0.85, maxPixelSize = Infinity } = {}): Promise<string> {
+  const scale = Math.min(1, maxPixelSize / Math.max(bitmap.width, bitmap.height));
+  const canvas = new OffscreenCanvas(Math.max(1, Math.round(bitmap.width * scale)), Math.max(1, Math.round(bitmap.height * scale)));
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('OffscreenCanvas 2D context unavailable');
-  ctx.drawImage(bitmap, 0, 0);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
   return URL.createObjectURL(blob);
 }

@@ -1,5 +1,5 @@
 import { DecodeError, type DecodedImage, type ExifInfo, type ImageDecoder, type ImageKind } from '../core';
-import { fitBitmap } from './libRawDecoder';
+import { fitBitmap } from './bitmapTools';
 
 /**
  * Decodes JPEG/PNG with the browser's native decoder.
@@ -23,7 +23,8 @@ export class BitmapDecoder implements ImageDecoder {
     return fitBitmap(await this.open(file), maxPixelSize);
   }
 
-  async decode(file: File): Promise<DecodedImage> {
+  async decode(file: File, _options?: unknown, signal?: AbortSignal): Promise<DecodedImage> {
+    if (signal?.aborted) throw new DecodeError('aborted', `${file.name}: 已取消`);
     const bmp = await this.open(file);
     const canvas = new OffscreenCanvas(bmp.width, bmp.height);
     const ctx = canvas.getContext('2d');
