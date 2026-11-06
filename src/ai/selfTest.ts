@@ -1,4 +1,4 @@
-import { createSession, ort, ortThreads, webGpuAvailable, type ExecutionBackend } from './ortRuntime';
+import { createSession, getOrt, ortThreads, webGpuAvailable, type ExecutionBackend } from './ortRuntime';
 import { CONV, MATMUL4, matmul4Expected, matmul4Input } from './selfTestSpec';
 
 export interface SelfTestItem {
@@ -29,7 +29,7 @@ export async function runAiSelfTest(): Promise<SelfTestReport> {
   items.push(await timed('4bit 量化矩阵乘 MatMulNBits (wasm)', () => matmul4Check()));
   return {
     crossOriginIsolated: globalThis.crossOriginIsolated === true,
-    threads: ortThreads(),
+    threads: await ortThreads(),
     webGpu,
     items,
     passed: items.every((i) => i.passed),
@@ -47,6 +47,7 @@ async function timed(name: string, body: () => Promise<{ passed: boolean; detail
 }
 
 async function convCheck(backend: ExecutionBackend) {
+  const ort = await getOrt();
   const session = await createSession('selftest_conv.onnx', backend);
   try {
     const n = CONV.size;
@@ -63,6 +64,7 @@ async function convCheck(backend: ExecutionBackend) {
 }
 
 async function matmul4Check() {
+  const ort = await getOrt();
   const session = await createSession('selftest_matmul4.onnx', 'wasm');
   try {
     const { M, K } = MATMUL4;

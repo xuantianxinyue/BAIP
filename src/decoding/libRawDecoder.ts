@@ -1,14 +1,25 @@
-import LibRaw, { type LibRawSettings, type Metadata } from 'libraw-wasm';
-import { DecodeError, type DecodeOptions, type DecodedImage, type ExifInfo, type ImageDecoder, type ImageKind } from '../core';
+import type LibRaw from 'libraw-wasm';
+import type { LibRawSettings, Metadata } from 'libraw-wasm';
+import { DecodeError, flipToRotation, importPublicModule, jpegExifOrientation, type DecodeOptions, type DecodedImage, type ExifInfo, type ImageDecoder, type ImageKind } from '../core';
+import { fitBitmap, rotateBitmap } from './bitmapTools';
 
 /**
  * Decodes camera RAW files with LibRaw compiled to WASM (libraw-wasm).
  *
+ * libraw-wasm is loaded at runtime from public/vendor/libraw (see scripts/copy-vendor.mjs) so its
+ * worker and wasm resolve via `import.meta.url` without going through the bundler.
  * Each call uses its own LibRaw instance (= its own Web Worker) and disposes it afterwards,
  * so the WASM heap of one file is released before the next one is opened.
  * Performance: `decode` runs full demosaicing on the CPU; for a 24 MP file this is the
  * dominant cost of the pipeline, so previews should use `embeddedPreview` instead.
  */
+let libRawClass: Promise<typeof LibRaw> | undefined;
+
+function loadLibRaw(): Promise<typeof LibRaw> {
+  libRawClass ??= importPublicModule<{ default: typeof LibRaw }>('vendor/libraw/index.js').then((m) => m.default);
+  return libRawClass;
+}
+
 export class LibRawDecoder implements ImageDecoder {
   readonly id = 'libraw-wasm';
 
@@ -17,21 +28,29 @@ export class LibRawDecoder implements ImageDecoder {
   }
 
   async readMetadata(file: File): Promise<ExifInfo> {
-    return this.withLibRaw(file, {}, async (raw) => {
+    return this.withLibRaw(file, {}, undefined, async (raw) => {
       const meta = await raw.metadata(true);
       if (!meta) throw new DecodeError('corrupt', `${file.name}: no metadata`);
       return toExif(meta);
     });
   }
 
+  /**
+   * The embedded camera JPEG, upright. LibRaw's metadata dimensions and full decode are already
+   * rotated by `flip`; the embedded JPEG is rotated by the browser only if it carries its own EXIF
+   * Orientation tag, so it is rotated here by hand when that tag is missing.
+   */
   async embeddedPreview(file: File, maxPixelSize: number): Promise<ImageBitmap | null> {
-    return this.withLibRaw(file, {}, async (raw) => {
+    return this.withLibRaw(file, {}, undefined, async (raw) => {
+      const meta = await raw.metadata(true);
+      const rotation = flipToRotation(meta?.flip ?? 0);
       const thumb = await raw.thumbnailData();
       if (!thumb || thumb.data.length === 0) return null;
       if (thumb.format === 'jpeg') {
-        const blob = new Blob([thumb.data as Uint8Array<ArrayBuffer>], { type: 'image/jpeg' });
-        const full = await createImageBitmap(blob);
-        return fitBitmap(full, maxPixelSize);
+        const bytes = thumb.data as Uint8Array<ArrayBuffer>;
+        const full = await createImageBitmap(new Blob([bytes], { type: 'image/jpeg' }));
+        const upright = jpegExifOrientation(bytes) === undefined ? await rotateBitmap(full, rotation) : full;
+        return fitBitmap(upright, maxPixelSize);
       }
       if (thumb.format === 'bitmap') {
         const rgba = new Uint8ClampedArray(thumb.width * thumb.height * 4);
@@ -42,20 +61,20 @@ export class LibRawDecoder implements ImageDecoder {
           rgba[i * 4 + 3] = 255;
         }
         const full = await createImageBitmap(new ImageData(rgba, thumb.width, thumb.height));
-        return fitBitmap(full, maxPixelSize);
+        return fitBitmap(await rotateBitmap(full, rotation), maxPixelSize);
       }
       return null;
     });
   }
 
-  async decode(file: File, options: DecodeOptions = {}): Promise<DecodedImage> {
+  async decode(file: File, options: DecodeOptions = {}, signal?: AbortSignal): Promise<DecodedImage> {
     const settings: LibRawSettings = {
       outputBps: options.outputBits ?? 16,
       useCameraWb: options.useCameraWhiteBalance ?? true,
       halfSize: options.halfSize ?? false,
       userQual: 3, // AHD demosaic
     };
-    return this.withLibRaw(file, settings, async (raw) => {
+    return this.withLibRaw(file, settings, signal, async (raw) => {
       const img = await raw.imageData();
       if (!img) throw new DecodeError('failed', `${file.name}: no image data`);
       if (img.colors !== 3) throw new DecodeError('unsupported', `${file.name}: ${img.colors} colour channels`);
@@ -69,15 +88,23 @@ export class LibRawDecoder implements ImageDecoder {
     });
   }
 
-  private async withLibRaw<T>(file: File, settings: LibRawSettings, body: (raw: LibRaw) => Promise<T>): Promise<T> {
-    const raw = new LibRaw();
+  /** Runs `body` on a fresh LibRaw worker; aborting `signal` disposes the worker immediately. */
+  private async withLibRaw<T>(file: File, settings: LibRawSettings, signal: AbortSignal | undefined, body: (raw: LibRaw) => Promise<T>): Promise<T> {
+    const aborted = () => new DecodeError('aborted', `${file.name}: 已取消`);
+    if (signal?.aborted) throw aborted();
+    const LibRawClass = await loadLibRaw();
+    const raw = new LibRawClass();
+    const onAbort = () => raw.dispose();
+    signal?.addEventListener('abort', onAbort, { once: true });
     try {
       await raw.open(new Uint8Array(await file.arrayBuffer()), settings);
       return await body(raw);
     } catch (e) {
+      if (signal?.aborted) throw aborted();
       if (e instanceof DecodeError) throw e;
       throw new DecodeError('failed', `${file.name}: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
+      signal?.removeEventListener('abort', onAbort);
       raw.dispose();
     }
   }
@@ -99,17 +126,4 @@ function toExif(m: Metadata): ExifInfo {
     height: m.height,
     orientation: m.flip,
   };
-}
-
-/** Downscales a bitmap so its long edge is at most `maxPixelSize`, closing the original. */
-export async function fitBitmap(bitmap: ImageBitmap, maxPixelSize: number): Promise<ImageBitmap> {
-  const scale = maxPixelSize / Math.max(bitmap.width, bitmap.height);
-  if (scale >= 1) return bitmap;
-  const resized = await createImageBitmap(bitmap, {
-    resizeWidth: Math.round(bitmap.width * scale),
-    resizeHeight: Math.round(bitmap.height * scale),
-    resizeQuality: 'high',
-  });
-  bitmap.close();
-  return resized;
 }

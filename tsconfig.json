@@ -10,9 +10,15 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "isolatedModules": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowJs": false,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["vite/client", "node"]
+    "incremental": true,
+    "types": ["node"],
+    "plugins": [{ "name": "next" }]
   },
-  "include": ["src", "e2e", "vite.config.ts", "playwright.config.ts"]
+  "include": ["next-env.d.ts", "src", "e2e", "*.ts", ".next/types/**/*.ts", ".next/dev/types/**/*.ts", ".next-e2e/types/**/*.ts", ".next-e2e/dev/types/**/*.ts"],
+  "exclude": ["node_modules"]
 }

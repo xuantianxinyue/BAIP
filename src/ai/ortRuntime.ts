@@ -1,26 +1,32 @@
-import * as ort from 'onnxruntime-web';
-import ortMjsUrl from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.mjs?url';
-import ortWasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm?url';
+import { importPublicModule, publicUrl } from '../core';
 
+export type Ort = typeof import('onnxruntime-web');
+export type InferenceSession = import('onnxruntime-web').InferenceSession;
 export type ExecutionBackend = 'webgpu' | 'wasm';
 
-let configured = false;
+let ortPromise: Promise<Ort> | undefined;
 
 /**
- * Points ONNX Runtime Web at its own WASM loader/binary emitted by Vite into dist/assets,
- * so nothing is fetched from a CDN, and enables multithreading when the page is
- * cross-origin isolated. The explicit `mjs` path matters: without it ORT spawns its
- * threads from the app's main chunk, which then fails inside the worker.
+ * Loads ONNX Runtime Web from public/vendor/ort (copied there by scripts/copy-vendor.mjs),
+ * so nothing is fetched from a CDN and the bundler never touches the WASM runtime.
+ * The non-bundled `ort.min.mjs` is used on purpose: it loads its WASM loader from `wasmPaths`,
+ * and the explicit `mjs` path makes ORT spawn its threads from that file rather than from an app chunk.
+ * Multithreading is enabled only when the page is cross-origin isolated.
  */
-export function configureOrt(): void {
-  if (configured) return;
-  ort.env.wasm.wasmPaths = { mjs: ortMjsUrl, wasm: ortWasmUrl };
-  ort.env.wasm.numThreads = globalThis.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
-  configured = true;
+export function getOrt(): Promise<Ort> {
+  ortPromise ??= importPublicModule<Ort>('vendor/ort/ort.min.mjs').then((ort) => {
+    ort.env.wasm.wasmPaths = {
+      mjs: publicUrl('vendor/ort/ort-wasm-simd-threaded.jsep.mjs'),
+      wasm: publicUrl('vendor/ort/ort-wasm-simd-threaded.jsep.wasm'),
+    };
+    ort.env.wasm.numThreads = globalThis.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
+    return ort;
+  });
+  return ortPromise;
 }
 
-export function ortThreads(): number {
-  return ort.env.wasm.numThreads ?? 1;
+export async function ortThreads(): Promise<number> {
+  return (await getOrt()).env.wasm.numThreads ?? 1;
 }
 
 export async function webGpuAvailable(): Promise<boolean> {
@@ -34,12 +40,15 @@ export async function webGpuAvailable(): Promise<boolean> {
 }
 
 /** Loads a model bundled under public/models. */
-export async function createSession(modelFile: string, backend: ExecutionBackend): Promise<ort.InferenceSession> {
-  configureOrt();
-  return ort.InferenceSession.create(`${import.meta.env.BASE_URL}models/${modelFile}`, {
+export async function createSession(modelFile: string, backend: ExecutionBackend): Promise<InferenceSession> {
+  const ort = await getOrt();
+  return ort.InferenceSession.create(publicUrl(`models/${modelFile}`), {
     executionProviders: [backend],
     graphOptimizationLevel: 'all',
   });
 }
 
-export { ort };
+/** WebGPU when the browser has it, otherwise the WASM backend. */
+export async function preferredBackend(): Promise<ExecutionBackend> {
+  return (await webGpuAvailable()) ? 'webgpu' : 'wasm';
+}

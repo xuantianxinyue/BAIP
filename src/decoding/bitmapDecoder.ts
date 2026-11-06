@@ -1,10 +1,12 @@
-import { DecodeError, type DecodedImage, type ExifInfo, type ImageDecoder, type ImageKind } from '../core';
-import { fitBitmap } from './libRawDecoder';
+import { DecodeError, exifFields, readExifBlock, type DecodedImage, type ExifInfo, type ImageDecoder, type ImageKind } from '../core';
+import { fitBitmap } from './bitmapTools';
 
 /**
  * Decodes JPEG/PNG with the browser's native decoder.
- * EXIF tags of JPEG files are not parsed yet (only pixel size); see docs/web-plan.md.
+ * EXIF sits at the start of a JPEG, so only its first bytes are read for metadata.
  */
+const EXIF_SCAN_BYTES = 128 * 1024;
+
 export class BitmapDecoder implements ImageDecoder {
   readonly id = 'browser-bitmap';
 
@@ -14,16 +16,19 @@ export class BitmapDecoder implements ImageDecoder {
 
   async readMetadata(file: File): Promise<ExifInfo> {
     const bmp = await this.open(file);
-    const info: ExifInfo = { width: bmp.width, height: bmp.height, orientation: 0 };
+    const { width, height } = bmp;
     bmp.close();
-    return info;
+    const head = new Uint8Array(await file.slice(0, EXIF_SCAN_BYTES).arrayBuffer());
+    const block = readExifBlock(head);
+    return { ...(block && exifFields(block)), width, height, orientation: 0 };
   }
 
   async embeddedPreview(file: File, maxPixelSize: number): Promise<ImageBitmap | null> {
     return fitBitmap(await this.open(file), maxPixelSize);
   }
 
-  async decode(file: File): Promise<DecodedImage> {
+  async decode(file: File, _options?: unknown, signal?: AbortSignal): Promise<DecodedImage> {
+    if (signal?.aborted) throw new DecodeError('aborted', `${file.name}: 已取消`);
     const bmp = await this.open(file);
     const canvas = new OffscreenCanvas(bmp.width, bmp.height);
     const ctx = canvas.getContext('2d');
