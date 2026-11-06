@@ -48,7 +48,14 @@ describe('selection', () => {
 
   it('after removal opens the neighbour and drops removed ids', () => {
     const s = run([click('b'), click('c', toggle), { type: 'removed', ids: new Set(['b', 'c']), order }]);
-    expect(view(s)).toEqual({ current: 'd', selected: [] });
+    expect(view(s)).toEqual({ current: 'd', selected: ['d'] });
+  });
+
+  it('after removal keeps a remaining selection and does not tick the open photo', () => {
+    const remaining = run([click('a'), click('c', toggle), { type: 'removed', ids: new Set(['c']), order }]);
+    expect(view(remaining)).toEqual({ current: 'd', selected: ['a'] });
+    const openPhotoStays = run([click('a'), click('b', plain, true), click('a', plain, true), { type: 'removed', ids: new Set(['b']), order }]);
+    expect(view(openPhotoStays)).toEqual({ current: 'a', selected: [] });
   });
 
   it('sync opens the first photo when nothing valid is open', () => {

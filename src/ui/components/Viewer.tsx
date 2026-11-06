@@ -2,7 +2,6 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import type { PhotoAsset } from '../../core';
-import type { DecoderRouter } from '../../decoding';
 import { useFullImage } from '../useFullImage';
 
 const MAX_SCALE = 4;
@@ -46,7 +45,6 @@ function zoomAt(v: View, g: Geometry, scale: number, px: number, py: number): Vi
 
 interface Props {
   asset?: PhotoAsset;
-  router: DecoderRouter;
 }
 
 /**
@@ -57,7 +55,7 @@ interface Props {
  * has, the full image is decoded and drawn over it. Its tone differs from the camera JPEG preview,
  * hence the source label.
  */
-export function Viewer({ asset, router }: Props) {
+export function Viewer({ asset }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ cw: 0, ch: 0 });
   const [previewSize, setPreviewSize] = useState<{ w: number; h: number }>();
@@ -76,7 +74,7 @@ export function Viewer({ asset, router }: Props) {
 
   const exif = asset?.exif;
   const [fullWanted, setFullWanted] = useState(false);
-  const full = useFullImage(router, asset, fullWanted);
+  const full = useFullImage(asset, fullWanted);
   const imageSize =
     full.status === 'ready' ? { w: full.width, h: full.height } : exif && exif.width > 0 && exif.height > 0 ? { w: exif.width, h: exif.height } : previewSize;
   const geometry: Geometry | undefined = imageSize && size.cw > 0 && size.ch > 0 ? { ...size, ...imageSize } : undefined;

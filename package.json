@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "models:selftest": "python3 scripts/make_selftest_models.py",
+    "models:denoise": "python3 scripts/make_denoise_model.py",
     "samples": "bash scripts/fetch_samples.sh"
   },
   "dependencies": {

@@ -19,6 +19,11 @@ Canon/EOS%20Digital%20Rebel%20XT/IMG_8728.CR2 Canon_350D_portrait.CR2
 LIST
 ls -la "$DEST"
 
+# Face detection sample (NASA portrait, public domain, via scikit-image)
+FACES="$(dirname "$DEST")/faces"
+mkdir -p "$FACES"
+[[ -f "$FACES/astronaut.png" ]] || curl -fL --retry 2 -o "$FACES/astronaut.png" https://raw.githubusercontent.com/scikit-image/scikit-image/v0.22.0/skimage/data/astronaut.png
+
 # JPEG fixture with EXIF, converted locally from the NEF
 # (macOS only; skipped elsewhere)
 command -v sips >/dev/null || exit 0

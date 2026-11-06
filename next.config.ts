@@ -8,6 +8,8 @@ const crossOriginIsolation = [
 ];
 
 const config: NextConfig = {
+  // e2e builds elsewhere so it never replaces the files of a server running from `.next`.
+  distDir: process.env.NEXT_DIST_DIR || undefined,
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || undefined,
   reactStrictMode: true,
   poweredByHeader: false,

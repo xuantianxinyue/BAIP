@@ -7,7 +7,7 @@ export default defineConfig({
   use: { baseURL: 'http://localhost:4173' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } }],
   webServer: {
-    command: 'npm run build && npx next start --port 4173',
+    command: 'NEXT_DIST_DIR=.next-e2e npm run build && NEXT_DIST_DIR=.next-e2e npx next start --port 4173',
     url: 'http://localhost:4173',
     timeout: 180_000,
     reuseExistingServer: false,

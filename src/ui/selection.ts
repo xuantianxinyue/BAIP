@@ -64,6 +64,8 @@ export function selectionReducer(state: SelectionState, action: SelectionAction)
       const { ids, order } = action;
       const currentId = neighborAfterRemoval(order, state.currentId, ids);
       const selected = new Set([...state.selected].filter((id) => !ids.has(id)));
+      // Opening a neighbour selects it like any other way of opening a photo, so Delete can repeat.
+      if (currentId !== undefined && currentId !== state.currentId && selected.size === 0) return { currentId, selected: new Set([currentId]), anchorId: currentId };
       const anchorId = state.anchorId !== undefined && ids.has(state.anchorId) ? undefined : state.anchorId;
       return { currentId, selected, anchorId };
     }

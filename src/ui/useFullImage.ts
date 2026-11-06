@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { PhotoAsset } from '../core';
-import type { DecoderRouter } from '../decoding';
-import { toImageData } from '../pipeline';
+import { decodeToBitmap } from '../batch';
 
 export type FullImageState =
   | { status: 'idle' }
@@ -17,11 +16,11 @@ export type FullImageState =
  * unmounts it: an unfinished decode is aborted (disposing its LibRaw worker) and the canvas is
  * released — only one full image is alive at a time.
  *
- * RAW files are decoded by LibRaw at 8 bit (display only; LibRaw already applies the rotation),
- * JPG/PNG by the browser. Pixels go straight into a `bitmaprenderer` canvas without an extra copy.
- * The RGB → RGBA conversion still runs on the main thread (moves to a worker in phase 2.1).
+ * RAW files are decoded by LibRaw at 8 bit (display only; LibRaw already applies the rotation) in a
+ * worker, which also does the RGB → RGBA conversion, so the main thread only receives a bitmap.
+ * JPG/PNG are decoded by the browser. Pixels go into a `bitmaprenderer` canvas without an extra copy.
  */
-export function useFullImage(router: DecoderRouter, asset: PhotoAsset | undefined, wanted: boolean): FullImageState {
+export function useFullImage(asset: PhotoAsset | undefined, wanted: boolean): FullImageState {
   const [requested, setRequested] = useState(false);
   const [state, setState] = useState<FullImageState>({ status: 'idle' });
   const ready = asset?.status === 'ready';
@@ -37,10 +36,7 @@ export function useFullImage(router: DecoderRouter, asset: PhotoAsset | undefine
     setState({ status: 'loading' });
     const t0 = performance.now();
     (async () => {
-      const bitmap =
-        asset.kind === 'raw'
-          ? await createImageBitmap(toImageData(await router.decode(asset.file, { outputBits: 8 }, controller.signal)))
-          : await createImageBitmap(asset.file);
+      const bitmap = asset.kind === 'raw' ? await decodeToBitmap(asset.file, controller.signal) : await createImageBitmap(asset.file);
       if (controller.signal.aborted) {
         bitmap.close();
         return;

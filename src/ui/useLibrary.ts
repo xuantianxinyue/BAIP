@@ -46,7 +46,7 @@ export function useLibrary(router = new DecoderRouter()) {
   const lastImported = useRef<File | undefined>(undefined);
 
   useEffect(() => {
-    if (new URLSearchParams(location.search).has('e2e')) installDevHooks(routerRef.current, () => lastImported.current);
+    if (new URLSearchParams(location.search).has('e2e')) installDevHooks(routerRef.current, () => lastImported.current, () => assetsRef.current);
   }, []);
 
   const update = useCallback((id: string, patch: Partial<PhotoAsset>) => {

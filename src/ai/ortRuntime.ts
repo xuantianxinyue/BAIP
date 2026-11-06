@@ -47,3 +47,8 @@ export async function createSession(modelFile: string, backend: ExecutionBackend
     graphOptimizationLevel: 'all',
   });
 }
+
+/** WebGPU when the browser has it, otherwise the WASM backend. */
+export async function preferredBackend(): Promise<ExecutionBackend> {
+  return (await webGpuAvailable()) ? 'webgpu' : 'wasm';
+}

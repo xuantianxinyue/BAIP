@@ -83,7 +83,7 @@ export function App() {
         </div>
       </header>
       <main className="flex min-h-0 flex-1">
-        <Viewer key={current?.id ?? 'none'} asset={current} router={router} />
+        <Viewer key={current?.id ?? 'none'} asset={current} />
         <ExifPanel asset={current} />
       </main>
       <ActionBar

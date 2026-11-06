@@ -6,5 +6,6 @@ playwright-report/
 .DS_Store
 *.tsbuildinfo
 .next/
+.next-e2e/
 next-env.d.ts
 public/vendor/
